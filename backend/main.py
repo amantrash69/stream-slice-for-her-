@@ -272,6 +272,24 @@ async def health():
     }
 
 
+class CookieTextRequest(BaseModel):
+    cookies: str
+
+
+@app.post("/api/cookies-text")
+async def save_cookies_text_route(req: CookieTextRequest):
+    text = req.cookies.strip()
+    if not text:
+        raise HTTPException(400, "Empty cookies text provided.")
+    if "# Netscape HTTP Cookie File" not in text and "# HTTP Cookie File" not in text:
+        text = "# Netscape HTTP Cookie File\n" + text
+    COOKIES_FILE.write_text(text, encoding="utf-8")
+    print(f"[COOKIES] Saved new cookies.txt from text input ({len(text)} bytes)")
+    return {
+        "message": f"Cookies saved successfully ({len(text)} bytes). YouTube bot detection bypassed!"
+    }
+
+
 @app.post("/api/cookies-upload")
 async def upload_cookies_file(file: UploadFile):
     content = await file.read()
