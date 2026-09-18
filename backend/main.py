@@ -191,7 +191,7 @@ def get_base_ydl_opts(use_cookies: bool = True) -> dict:
         "retry_sleep": 2,
         "extractor_args": {
             "youtube": {
-                "player_client": ["tv", "ios", "android", "mweb", "web"],
+                "player_client": ["ios", "android", "mweb", "web"],
             }
         },
     }
@@ -199,7 +199,7 @@ def get_base_ydl_opts(use_cookies: bool = True) -> dict:
         print(f"[COOKIES] Using cookies file: {COOKIES_FILE}")
         opts["cookiefile"] = str(COOKIES_FILE)
     else:
-        print("[COOKIES] Operating without cookies file (using mobile/TV client fallback).")
+        print("[COOKIES] Operating without cookies file (using mobile client fallback).")
     return opts
 
 
@@ -505,18 +505,67 @@ async def clip_video(req: ClipRequest):
     )
 
 
-# ---------------------------------------------------------------------------
-# Blocking helpers (must run in ThreadPoolExecutor — yt_dlp is not async)
-# ---------------------------------------------------------------------------
+STRATEGIES = [
+    {"player_client": ["ios", "android", "mweb", "web"]},
+    {"player_client": ["mweb", "web"]},
+    {"player_client": ["android", "web"]},
+    None,
+]
 
 def _do_info(opts: dict, url: str) -> dict:
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        return ydl.extract_info(url, download=False)
+    last_err = None
+    if COOKIES_FILE.exists():
+        for strat in STRATEGIES:
+            o = dict(opts)
+            o["cookiefile"] = str(COOKIES_FILE)
+            if strat:
+                o["extractor_args"] = {"youtube": strat}
+            try:
+                with yt_dlp.YoutubeDL(o) as ydl:
+                    return ydl.extract_info(url, download=False)
+            except Exception as e:
+                last_err = e
+
+    for strat in STRATEGIES:
+        o = dict(opts)
+        o.pop("cookiefile", None)
+        if strat:
+            o["extractor_args"] = {"youtube": strat}
+        try:
+            with yt_dlp.YoutubeDL(o) as ydl:
+                return ydl.extract_info(url, download=False)
+        except Exception as e:
+            last_err = e
+
+    raise last_err or RuntimeError("Could not fetch video info using any strategy.")
 
 
 def _do_download(opts: dict, url: str):
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
+    last_err = None
+    if COOKIES_FILE.exists():
+        for strat in STRATEGIES:
+            o = dict(opts)
+            o["cookiefile"] = str(COOKIES_FILE)
+            if strat:
+                o["extractor_args"] = {"youtube": strat}
+            try:
+                with yt_dlp.YoutubeDL(o) as ydl:
+                    return ydl.download([url])
+            except Exception as e:
+                last_err = e
+
+    for strat in STRATEGIES:
+        o = dict(opts)
+        o.pop("cookiefile", None)
+        if strat:
+            o["extractor_args"] = {"youtube": strat}
+        try:
+            with yt_dlp.YoutubeDL(o) as ydl:
+                return ydl.download([url])
+        except Exception as e:
+            last_err = e
+
+    raise last_err or RuntimeError("Could not download video using any strategy.")
 
 
 # ---------------------------------------------------------------------------
