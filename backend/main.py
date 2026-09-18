@@ -151,6 +151,16 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def normalize_double_slash_middleware(request, call_next):
+    path = request.url.path
+    if "//" in path:
+        new_path = "/" + "/".join(filter(None, path.split("/")))
+        request.scope["path"] = new_path
+        request.scope["raw_path"] = new_path.encode("ascii")
+    return await call_next(request)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -284,6 +294,7 @@ async def upload_cookies_file(file: UploadFile):
 
 
 @app.post("/api/info")
+@app.post("//api/info")
 async def get_video_info(req: InfoRequest):
     loop = asyncio.get_running_loop()
     ydl_opts = {
@@ -317,6 +328,7 @@ async def get_video_info(req: InfoRequest):
 
 
 @app.post("/api/clip")
+@app.post("//api/clip")
 async def clip_video(req: ClipRequest):
     # ── 1. Parse & validate timestamps ──────────────────────────────────────
     try:
