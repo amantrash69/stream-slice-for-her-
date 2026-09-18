@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: streamslice-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    region: oregon
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: YOUTUBE_COOKIES
+        sync: false # Set in Render dashboard with your cookies.txt contents
