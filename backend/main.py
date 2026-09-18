@@ -287,46 +287,20 @@ async def upload_cookies_file(file: UploadFile):
 async def get_video_info(req: InfoRequest):
     loop = asyncio.get_running_loop()
     ydl_opts = {
-        **get_base_ydl_opts(use_cookies=True),
+        **get_base_ydl_opts(),
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
     }
     try:
         info = await loop.run_in_executor(_executor, _do_info, ydl_opts, req.url)
-    except Exception as primary_err:
-        if COOKIES_FILE.exists():
-            print(f"[INFO] Primary attempt with cookies failed ({primary_err}). Retrying WITHOUT cookies...")
-            ydl_opts_nocookies = {
-                **get_base_ydl_opts(use_cookies=False),
-                "quiet": True,
-                "no_warnings": True,
-                "skip_download": True,
-            }
-            try:
-                info = await loop.run_in_executor(_executor, _do_info, ydl_opts_nocookies, req.url)
-            except Exception as secondary_err:
-                primary_err = secondary_err
-            else:
-                print("[INFO] Fallback without cookies SUCCEEDED!")
-                duration = info.get("duration")
-                is_live = bool(info.get("is_live") or info.get("live_status") == "is_live")
-                return {
-                    "title": info.get("title", "Unknown Title"),
-                    "thumbnail": info.get("thumbnail") or (info.get("thumbnails") or [{}])[-1].get("url", ""),
-                    "channel": info.get("uploader") or info.get("channel", "Unknown"),
-                    "duration_seconds": duration,
-                    "duration_formatted": seconds_to_hms(duration) if duration else "LIVE",
-                    "is_live": is_live,
-                    "view_count": info.get("view_count"),
-                }
-
-        err = str(primary_err).lower()
+    except Exception as err_obj:
+        err = str(err_obj).lower()
         if "private" in err:
             raise HTTPException(403, "This video is private or requires login.")
         if "not available" in err or "removed" in err:
             raise HTTPException(404, "Video not available (deleted or geo-blocked).")
-        raise HTTPException(400, f"Could not fetch video info: {primary_err}")
+        raise HTTPException(400, f"Could not fetch video info: {err_obj}")
 
     duration = info.get("duration")
     is_live = bool(info.get("is_live") or info.get("live_status") == "is_live")
@@ -390,7 +364,7 @@ async def clip_video(req: ClipRequest):
     print(f"[CLIP] format={fmt!r}  force_keyframes={force_kf}")
 
     # ── 3. First pass: fetch title for the output filename ───────────────────
-    info_opts = {**get_base_ydl_opts(use_cookies=True), "quiet": True, "no_warnings": True, "skip_download": True}
+    info_opts = {**get_base_ydl_opts(), "quiet": True, "no_warnings": True, "skip_download": True}
     try:
         loop       = asyncio.get_running_loop()
         info       = await loop.run_in_executor(_executor, _do_info, info_opts, req.url)
@@ -403,42 +377,31 @@ async def clip_video(req: ClipRequest):
     out_template  = os.path.join(tmp_dir, "raw.%(ext)s")
     ffmpeg_path   = shutil.which("ffmpeg")
 
-    def make_opts(use_cookies: bool):
-        o = {
-            **get_base_ydl_opts(use_cookies=use_cookies),
-            "format":                      fmt,
-            "outtmpl":                     out_template,
-            "quiet":                       False,
-            "no_warnings":                 False,
-            "ffmpeg_location":             ffmpeg_path,
-            "merge_output_format":         "mp4" if quality != "audio" else None,
-            "download_ranges":             yt_dlp.utils.download_range_func(None, [(start_sec, end_sec)]),
-            "force_keyframes_at_cuts":     force_kf,
-            "concurrent_fragment_downloads": 8,
-            "buffersize":                  1024 * 1024,
-            "http_chunk_size":             10 * 1024 * 1024,
-        }
-        if fmt_sort:
-            o["format_sort"] = fmt_sort
-        if quality == "audio":
-            o["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}]
-        return o
+    ydl_opts: dict = {
+        **get_base_ydl_opts(),
+        "format":                      fmt,
+        "outtmpl":                     out_template,
+        "quiet":                       False,
+        "no_warnings":                 False,
+        "ffmpeg_location":             ffmpeg_path,
+        "merge_output_format":         "mp4" if quality != "audio" else None,
+        "download_ranges":             yt_dlp.utils.download_range_func(None, [(start_sec, end_sec)]),
+        "force_keyframes_at_cuts":     force_kf,
+        "concurrent_fragment_downloads": 8,
+        "buffersize":                  1024 * 1024,
+        "http_chunk_size":             10 * 1024 * 1024,
+    }
+    if fmt_sort:
+        ydl_opts["format_sort"] = fmt_sort
+    if quality == "audio":
+        ydl_opts["postprocessors"] = [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}]
 
     try:
-        await loop.run_in_executor(_executor, _do_download, make_opts(use_cookies=True), req.url)
+        await loop.run_in_executor(_executor, _do_download, ydl_opts, req.url)
     except Exception as e:
-        if COOKIES_FILE.exists():
-            print(f"[CLIP] Download with cookies failed ({e}). Retrying WITHOUT cookies...")
-            try:
-                await loop.run_in_executor(_executor, _do_download, make_opts(use_cookies=False), req.url)
-            except Exception as e2:
-                traceback.print_exc()
-                shutil.rmtree(tmp_dir, ignore_errors=True)
-                raise HTTPException(500, f"Download failed: {e2}")
-        else:
-            traceback.print_exc()
-            shutil.rmtree(tmp_dir, ignore_errors=True)
-            raise HTTPException(500, f"Download failed: {e}")
+        traceback.print_exc()
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+        raise HTTPException(500, f"Download failed: {e}")
 
     # ── 5. Post-process: PTS/DTS normalisation + clean AAC audio ─────────────
     out_files = [p for p in Path(tmp_dir).iterdir() if p.is_file()]
