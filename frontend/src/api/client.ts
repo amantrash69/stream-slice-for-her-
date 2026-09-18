@@ -5,12 +5,14 @@ import type { VideoInfo, ClipRequest } from '../types';
 // 1. Explicit environment variable (e.g. VITE_API_URL set in GitHub Secrets or .env.production)
 // 2. If running on localhost/127.0.0.1 -> http://127.0.0.1:8000
 // 3. If hosted together on the same domain (Docker / VPS) -> relative ''
-export const BASE_URL =
+const rawBaseUrl =
   import.meta.env.VITE_API_URL ||
   (typeof window !== 'undefined' &&
   (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
     ? 'http://127.0.0.1:8000'
     : '');
+
+export const BASE_URL = rawBaseUrl.replace(/\/+$/, '');
 
 export const api = axios.create({
   baseURL: BASE_URL,
