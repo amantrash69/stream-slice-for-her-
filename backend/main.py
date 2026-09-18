@@ -344,19 +344,19 @@ async def clip_video(req: ClipRequest):
         fmt_sort    = []
         ext         = "m4a"
     elif quality == "1080p":
-        fmt         = "bestvideo[height<=1080]+bestaudio/bestvideo[height<=720]+bestaudio/best"
+        fmt         = "bestvideo[height<=1080]+bestaudio/bestvideo[height<=720]+bestaudio/18/22/b/best"
         fmt_sort    = ["fps:60", "fps", "res:1080", "res:720", "vcodec:vp9", "vcodec:h264"]
         force_kf    = True
     elif quality == "720p":
-        fmt         = "bestvideo[height<=720]+bestaudio/bestvideo[height<=480]+bestaudio/best"
+        fmt         = "bestvideo[height<=720]+bestaudio/bestvideo[height<=480]+bestaudio/18/22/b/best"
         fmt_sort    = ["fps:60", "fps", "res:720", "res:480", "vcodec:vp9", "vcodec:h264"]
         force_kf    = True
     elif quality == "480p":
-        fmt         = "bestvideo[height<=480]+bestaudio/best"
+        fmt         = "bestvideo[height<=480]+bestaudio/18/22/b/best"
         fmt_sort    = ["fps", "res:480", "vcodec:vp9", "vcodec:h264"]
         force_kf    = True
     else:
-        fmt         = "bv*[fps>=60]+ba/bv*+ba/best"
+        fmt         = "bv*[fps>=60]+ba/bv*+ba/18/22/b/best"
         fmt_sort    = ["res:2160", "res:1440", "res:1080", "res:720", "fps:60", "fps",
                        "vcodec:vp9", "vcodec:h264"]
         force_kf    = False
